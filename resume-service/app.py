@@ -6,6 +6,10 @@ import pdfplumber
 from flask import Flask, jsonify, request
 from pdfplumber.utils.exceptions import PdfminerException
 
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
 app = Flask(__name__)
 MAX_RESUME_BYTES = 5 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = MAX_RESUME_BYTES + 64 * 1024
@@ -123,4 +127,8 @@ def analyze_resume():
 
 
 if __name__ == "__main__":
-    app.run(port=int(os.environ.get("PORT", "8000")), debug=False)
+    app.run(
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", "8000")),
+    debug=False
+)
