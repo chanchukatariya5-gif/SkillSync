@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://skillsync-backend-u5na.onrender.com/api/:path*"
+    }
+  ]
+}
