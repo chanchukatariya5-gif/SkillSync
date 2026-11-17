@@ -56,6 +56,15 @@ Open three terminals from the repository root.
 
 Resume analysis requires a text-based PDF. Scanned/image-only PDFs are rejected with a clear message. Uploaded PDF bytes are processed in memory and discarded; extracted text and detected skills are saved in the local profile store.
 
+## Deploy frontend and API
+
+- Configure the Vercel project root directory as `frontend`; this applies `frontend/vercel.json`, which rewrites `/api/*` to `https://skillsync-backend-u5na.onrender.com`. Confirm that this is the Render API service URL for your deployment.
+- Deploy `backend/` as a separate Render Node web service with `npm start`. Configure a strong `JWT_SECRET`, `OPENAI_API_KEY` if chat is enabled, and `RESUME_SERVICE_URL` with the public URL of the deployed resume parser.
+- Deploy `resume-service/` as a separate Render Python web service using its `requirements.txt` and `python app.py` start command. The API's default parser URL is local-only and will not work in a separate Render service.
+- If you use `VITE_API_BASE_URL` to call Render directly instead of the Vercel rewrite, set it in Vercel to the API service origin (no `/api` suffix), and set the API's `FRONTEND_URL` on Render to the exact Vercel site origin.
+
+Check `https://<render-api-host>/api/health` for `{"status":"ok"}` after deployment. A webpage/HTML response rather than JSON usually means the API rewrite or service URL is wrong; resume upload errors should be checked against the parser service URL and Render logs.
+
 ## Tests and checks
 
 ```sh

@@ -34,11 +34,12 @@ const navigation = [
 ]
 
 const applicationStatuses = ['Applied', 'Interview', 'Offer', 'Rejected']
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
 const buttonPrimary = 'inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60'
 const buttonSecondary = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50'
 
 async function request(path, { token, ...options } = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
       ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
@@ -46,8 +47,20 @@ async function request(path, { token, ...options } = {}) {
       ...options.headers,
     },
   })
-  const payload = response.status === 204 ? null : await response.json()
-  if (!response.ok) throw new Error(payload?.error || 'The request could not be completed.')
+  let payload = null
+  if (response.status !== 204) {
+    const body = await response.text()
+    try {
+      payload = body ? JSON.parse(body) : null
+    } catch {
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.toLowerCase().includes('json')) {
+        throw new Error(`The API returned a webpage instead of JSON (HTTP ${response.status}). Check the Vercel API rewrite and Render API URL.`)
+      }
+      throw new Error(`The API returned invalid JSON (HTTP ${response.status}).`)
+    }
+  }
+  if (!response.ok) throw new Error(payload?.error || `The API request failed (HTTP ${response.status}).`)
   return payload
 }
 

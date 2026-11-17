@@ -15,8 +15,9 @@ function createApp({
   analyzeResume = async (buffer, filename) => {
     const form = new (require('form-data'))()
     form.append('resume', buffer, { filename, contentType: 'application/pdf' })
+    const resumeServiceUrl = (process.env.RESUME_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '')
     const response = await axios.post(
-      `${process.env.RESUME_SERVICE_URL || 'http://127.0.0.1:8000'}/analyze`,
+      `${resumeServiceUrl}/analyze`,
       form,
       { headers: form.getHeaders(), maxBodyLength: 5 * 1024 * 1024 + 64 * 1024, timeout: 30000 },
     )
@@ -174,6 +175,12 @@ function createApp({
     } catch (error) {
       if (error.response?.data?.error) {
         response.status(422).json({ error: error.response.data.error })
+        return
+      }
+      if (error.response) {
+        response.status(502).json({
+          error: 'Resume service returned an unexpected response. Check RESUME_SERVICE_URL and the parser service deployment.',
+        })
         return
       }
       if (error.code === 'ECONNREFUSED' || error.code === 'ECONNABORTED') {

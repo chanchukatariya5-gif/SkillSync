@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict')
+const axios = require('axios')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
@@ -32,14 +33,21 @@ before(async () => {
   const app = createApp({
     store: createStore(path.join(directory, 'store.json')),
     jwtSecret: 'test-secret-with-enough-entropy',
-    analyzeResume: async () => ({
-      name: 'Jordan Lee',
-      email: 'jordan@example.com',
-      extracted_text: 'Python, SQL, Excel, Data Analysis',
-      skills: ['Python', 'SQL', 'Excel', 'Data Analysis'],
-      technical_skills: ['Python', 'SQL', 'Excel', 'Data Analysis'],
-      soft_skills: [],
-    }),
+    analyzeResume: async (buffer) => {
+      if (buffer.toString().includes('parser-html')) {
+        const error = new Error('Resume service returned HTML')
+        error.response = { status: 503, data: '<!DOCTYPE html>' }
+        throw error
+      }
+      return {
+        name: 'Jordan Lee',
+        email: 'jordan@example.com',
+        extracted_text: 'Python, SQL, Excel, Data Analysis',
+        skills: ['Python', 'SQL', 'Excel', 'Data Analysis'],
+        technical_skills: ['Python', 'SQL', 'Excel', 'Data Analysis'],
+        soft_skills: [],
+      }
+    },
     generateChatReply: async (message, context, history) => {
       chatCalls.push({ message, context, history })
       if (message === 'empty reply') return '   '
@@ -147,6 +155,53 @@ test('resume upload builds personalized job matches and persists learning progre
   invalidPdf.append('resume', new Blob(['not a PDF'], { type: 'application/pdf' }), 'resume.pdf')
   const invalid = await jsonRequest('/api/resume/analyze', { method: 'POST', body: invalidPdf })
   assert.equal(invalid.response.status, 400)
+
+  const unavailableParser = new FormData()
+  unavailableParser.append('resume', new Blob(['%PDF-1.4 parser-html'], { type: 'application/pdf' }), 'resume.pdf')
+  const parserError = await jsonRequest('/api/resume/analyze', { method: 'POST', body: unavailableParser })
+  assert.equal(parserError.response.status, 502)
+  assert.match(parserError.payload.error, /RESUME_SERVICE_URL/)
+})
+
+test('resume parser URL removes trailing slashes before appending its analyze route', async () => {
+  const previousBaseUrl = baseUrl
+  const previousResumeServiceUrl = process.env.RESUME_SERVICE_URL
+  const originalPost = axios.post
+  const parserApp = createApp({
+    store: createStore(path.join(directory, 'resume-url-store.json')),
+    jwtSecret: 'test-secret-with-enough-entropy',
+  })
+  const parserServer = parserApp.listen(0)
+  let requestedUrl
+
+  process.env.RESUME_SERVICE_URL = 'https://skillsync-resume.onrender.com/'
+  axios.post = async (url) => {
+    requestedUrl = url
+    return {
+      data: {
+        extracted_text: 'Python',
+        skills: ['Python'],
+        technical_skills: ['Python'],
+        soft_skills: [],
+      },
+    }
+  }
+
+  try {
+    await new Promise((resolve) => parserServer.once('listening', resolve))
+    baseUrl = `http://127.0.0.1:${parserServer.address().port}`
+    const form = new FormData()
+    form.append('resume', new Blob(['%PDF-1.4 test'], { type: 'application/pdf' }), 'resume.pdf')
+    const { response } = await jsonRequest('/api/resume/analyze', { method: 'POST', body: form })
+    assert.equal(response.status, 200)
+    assert.equal(requestedUrl, 'https://skillsync-resume.onrender.com/analyze')
+  } finally {
+    baseUrl = previousBaseUrl
+    axios.post = originalPost
+    if (previousResumeServiceUrl === undefined) delete process.env.RESUME_SERVICE_URL
+    else process.env.RESUME_SERVICE_URL = previousResumeServiceUrl
+    await new Promise((resolve, reject) => parserServer.close((error) => error ? reject(error) : resolve()))
+  }
 })
 
 test('career chat is authenticated, validates input, and uses only the signed-in user context', async () => {
