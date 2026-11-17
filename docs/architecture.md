@@ -6,6 +6,7 @@
 - **Express API** owns authentication, request validation, per-user authorization, job scoring, and persistence. Job definitions and scoring live in `backend/src/jobs.js`; API handlers live in `backend/src/app.js`.
 - **JSON store** in `backend/src/store.js` serializes writes and replaces the data file atomically. User records, analyzed profiles, progress, and applications are scoped by a generated user ID. The default file is `backend/data/store.json`; `SKILLSYNC_DATA_FILE` can select another path.
 - **Flask resume service** extracts text from PDFs with pdfplumber, detects skill keywords, categorizes technical and soft skills, and reads basic contact details. It receives resume bytes from the API in memory and has no access to the application store.
+- **Career assistant** is a signed-in frontend chat widget backed by `POST /api/chat`. The API sends the current message, up to 8 in-memory conversation messages, and a limited skills/job-match/application-count summary to OpenAI; it does not send the stored extracted resume text or contact details.
 
 ## Data flow
 
@@ -28,6 +29,8 @@ The API also returns matched and missing skill lists so the score can be explain
 ## Persistence and deployment limits
 
 The JSON store is appropriate for a local academic demo and a single API process. It is not a multi-instance database: use a transactional database before horizontal scaling or production use. Configure a strong `JWT_SECRET`, HTTPS, appropriate CORS origins, and a retention policy before storing real personal data. Job opportunities and learning suggestions are seeded demo content, not live listings.
+
+The AI assistant requires a server-side `OPENAI_API_KEY`; never place this key in frontend code. The chat UI discloses the profile summary and recent chat messages sent to OpenAI. Chat transcripts remain in React memory and are not persisted.
 
 ## Test strategy
 

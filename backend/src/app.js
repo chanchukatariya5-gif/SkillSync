@@ -22,6 +22,7 @@ function createApp({
     )
     return response.data
   },
+  generateChatReply,
   jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'skillsync-local-development-secret'),
 } = {}) {
   if (!jwtSecret) {
@@ -201,6 +202,83 @@ function createApp({
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       response.json({ profile, jobs, applications, completedSkills })
     } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/api/chat', requireAuth, async (request, response, next) => {
+    try {
+      const rawMessage = typeof request.body.message === 'string' ? request.body.message : ''
+      if (rawMessage.length > 2000) {
+        return response.status(400).json({ error: 'Messages must be 2000 characters or fewer.' })
+      }
+      const message = rawMessage.trim()
+      if (!message) return response.status(400).json({ error: 'Enter a message.' })
+
+      const rawHistory = request.body.history ?? []
+      if (!Array.isArray(rawHistory) || rawHistory.length > 8) {
+        return response.status(400).json({ error: 'Chat history must contain no more than 8 messages.' })
+      }
+      const history = []
+      for (const entry of rawHistory) {
+        if (
+          !entry
+          || !['user', 'assistant'].includes(entry.role)
+          || typeof entry.content !== 'string'
+          || entry.content.length > 2000
+          || !entry.content.trim()
+        ) {
+          return response.status(400).json({ error: 'Chat history contains an invalid message.' })
+        }
+        history.push({ role: entry.role, content: entry.content.trim() })
+      }
+
+      if (!generateChatReply && !process.env.OPENAI_API_KEY) {
+        return response.status(503).json({ error: 'The AI assistant is not configured. Set OPENAI_API_KEY on the backend.' })
+      }
+
+      const state = await store.read()
+      const profile = state.profiles[request.userId]
+      const jobs = matchJobs(profile?.skills || [])
+      const top = jobs.slice(0, 3)
+        .map((job) => `${job.title} (${job.match_percentage}% match; skills to build: ${job.missing_skills.slice(0, 3).join(', ') || 'none'})`)
+        .join('; ')
+      const context = `User resume skills: ${profile?.skills?.slice(0, 30).join(', ') || 'not uploaded'}. Top job matches: ${top || 'unavailable'}. Applications tracked: ${state.applications.filter((item) => item.userId === request.userId).length}.`
+
+      let reply
+      if (generateChatReply) {
+        reply = await generateChatReply(message, context, history)
+      } else {
+        const result = await axios.post('https://api.openai.com/v1/chat/completions', {
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are SkillSync, a concise, supportive career coach. Answer career, resume, interview, and job-search questions. Use the supplied user context when relevant. Never claim experience or details not provided.\n${context}`,
+            },
+            ...history,
+            { role: 'user', content: message },
+          ],
+          max_tokens: 500,
+        }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, timeout: 30000 })
+        reply = result.data.choices?.[0]?.message?.content
+      }
+
+      if (typeof reply !== 'string' || !reply.trim()) {
+        return response.status(502).json({ error: 'The AI assistant returned an empty reply. Please try again.' })
+      }
+      response.json({ reply })
+    } catch (error) {
+      if (error.response?.status === 401) return response.status(503).json({ error: 'The AI service key is invalid. Check OPENAI_API_KEY.' })
+      if (error.response?.status === 429) return response.status(503).json({ error: 'The AI service is rate limited or out of quota. Try again later.' })
+      if (['ECONNABORTED', 'ETIMEDOUT'].includes(error.code)) {
+        return response.status(504).json({
+          error: 'The AI request timed out. Check that the backend can reach api.openai.com:443 and that any HTTPS proxy is configured.',
+        })
+      }
+      if (['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND'].includes(error.code)) {
+        return response.status(503).json({ error: 'The AI service is unreachable. Please try again later.' })
+      }
       next(error)
     }
   })

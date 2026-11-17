@@ -1,20 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownRight,
   ArrowUpRight,
   BookOpen,
+  Bot,
   BriefcaseBusiness,
   Check,
   CheckCircle2,
   Circle,
   FileText,
   LayoutDashboard,
+  LoaderCircle,
+  MessageCircle,
   LogOut,
   Plus,
   Search,
+  Send,
   Target,
   Trash2,
+  Moon,
+  Sun,
   Upload,
+  X,
 } from 'lucide-react'
 
 const navigation = [
@@ -57,6 +64,13 @@ function App() {
   const [selectedJobId, setSelectedJobId] = useState('')
   const [search, setSearch] = useState('')
   const [noteDrafts, setNoteDrafts] = useState({})
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skillsync_theme') === 'dark')
+
+  useEffect(() => {
+    localStorage.setItem('skillsync_theme', darkMode ? 'dark' : 'light')
+    document.documentElement.classList.toggle('dark', darkMode)
+  }, [darkMode])
+
 
   const selectedJob = useMemo(
     () => dashboard.jobs.find((job) => job.id === selectedJobId) || dashboard.jobs[0] || null,
@@ -253,7 +267,7 @@ function App() {
     : 0
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] text-slate-900">
+    <div className="min-h-screen bg-[#f7f8fc] text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <aside className="sidebar fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-slate-200 bg-white px-5 py-7 md:flex">
         <a className="mb-1 flex items-center gap-3 px-2 text-xl font-bold tracking-tight text-slate-900" href="#">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">S</span>
@@ -281,13 +295,14 @@ function App() {
       </aside>
 
       <main className="min-h-screen md:ml-64">
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur md:px-10">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 md:px-10">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
             <div>
               <p className="text-xs font-medium text-slate-400">YOUR CAREER WORKSPACE</p>
               <h1 className="mt-1 text-xl font-bold tracking-tight">{active}</h1>
             </div>
             <div className="flex items-center gap-3">
+              <button onClick={() => setDarkMode(!darkMode)} className={buttonSecondary} aria-label="Toggle dark mode">{darkMode ? <Sun size={16}/> : <Moon size={16}/>}<span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span></button>
               <span className="hidden text-right sm:block">
                 <span className="block text-sm font-semibold">{user?.name}</span>
                 <span className="block text-xs text-slate-400">{user?.email}</span>
@@ -390,7 +405,148 @@ function App() {
           )}
         </div>
       </main>
+      <CareerChat token={token} />
     </div>
+  )
+}
+
+function CareerChat({ token }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [messages, setMessages] = useState([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      content: 'Hi! I can help you think through career options, interviews, and your next learning steps.',
+    },
+  ])
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, busy])
+
+  async function sendMessage(value) {
+    const message = value.trim()
+    if (!message || busy) return
+
+    setDraft('')
+    setError('')
+    setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: message }])
+    setBusy(true)
+    try {
+      const result = await request('/api/chat', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          message,
+          history: messages
+            .filter((entry) => entry.id !== 'welcome')
+            .slice(-8)
+            .map(({ role, content }) => ({ role, content })),
+        }),
+      })
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'assistant', content: result.reply }])
+    } catch (chatError) {
+      setError(chatError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      {open && (
+        <section
+          aria-label="SkillSync career assistant"
+          className="fixed bottom-20 right-4 z-40 flex h-[min(620px,calc(100vh-7rem))] w-[calc(100vw-2rem)] max-w-[390px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 dark:border-slate-700 dark:bg-slate-900"
+          role="dialog"
+        >
+          <header className="flex items-center justify-between bg-indigo-700 px-4 py-3 text-white">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15"><Bot size={20} /></span>
+              <div><h2 className="text-sm font-bold">SkillSync assistant</h2><p className="text-[11px] text-indigo-200">Career guidance, tailored to you</p></div>
+            </div>
+            <button onClick={() => setOpen(false)} className="rounded-lg p-2 text-indigo-100 hover:bg-white/10 hover:text-white" aria-label="Close assistant"><X size={18} /></button>
+          </header>
+
+          <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+            Replies use the backend-configured OpenAI service. Your message, last 8 chat messages, and a short summary of detected skills, job matches, and application count are sent to OpenAI. Avoid sharing sensitive personal information.
+          </div>
+
+          <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto p-4">
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <p className={`max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-5 ${
+                  message.role === 'user'
+                    ? 'rounded-br-md bg-indigo-600 text-white'
+                    : 'rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                }`}>
+                  {message.content}
+                </p>
+              </div>
+            ))}
+            {busy && (
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <LoaderCircle size={15} className="animate-spin" /> Thinking…
+              </div>
+            )}
+            {error && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">{error}</p>}
+            <div ref={bottomRef} />
+          </div>
+
+          {messages.length === 1 && (
+            <div className="flex flex-wrap gap-2 px-4 pb-3">
+              {['Improve my best match', 'Plan my next learning step'].map((prompt) => (
+                <button key={prompt} disabled={busy} onClick={() => sendMessage(prompt)} className="rounded-full border border-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-slate-700 dark:text-indigo-300 dark:hover:bg-slate-800">
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <form
+            className="flex items-end gap-2 border-t border-slate-100 p-3 dark:border-slate-800"
+            onSubmit={(event) => {
+              event.preventDefault()
+              sendMessage(draft)
+            }}
+          >
+            <textarea
+              aria-label="Message the career assistant"
+              className="form-input max-h-28 min-h-11 flex-1 resize-none"
+              disabled={busy}
+              maxLength={2000}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  sendMessage(draft)
+                }
+              }}
+              placeholder="Ask a career question…"
+              rows={1}
+              value={draft}
+            />
+            <button className={`${buttonPrimary} h-11 w-11 shrink-0 px-0`} disabled={busy || !draft.trim()} aria-label="Send message" type="submit">
+              <Send size={17} />
+            </button>
+          </form>
+        </section>
+      )}
+
+      <button
+        aria-expanded={open}
+        aria-label={open ? 'Close career assistant' : 'Open career assistant'}
+        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/20 transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+        onClick={() => setOpen((current) => !current)}
+      >
+        {open ? <X size={18} /> : <MessageCircle size={18} />}
+        <span>{open ? 'Close' : 'Ask SkillSync'}</span>
+      </button>
+    </>
   )
 }
 

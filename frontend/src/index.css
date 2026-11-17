@@ -1,6 +1,9 @@
 
 @import "tailwindcss";
 
+/* The app's theme toggle is the source of truth, not the OS preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 * {
   box-sizing: border-box;
 }

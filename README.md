@@ -9,6 +9,7 @@ SkillSync is a local-first career planning application for analyzing resumes, co
 - Explainable job compatibility scores and per-role matched/missing skill lists.
 - Per-role learning roadmaps with saved completion progress.
 - Application tracking with status changes and follow-up notes.
+- An authenticated AI career assistant for resume, role, and learning questions.
 - Per-user data persisted to a local JSON file by the API.
 
 Job opportunities and learning recommendations are project demo data, not live job listings or endorsements. Compatibility scores compare the detected skills with listed required skills; they are not hiring predictions.
@@ -40,6 +41,8 @@ Open three terminals from the repository root.
    ```
 
    Set a private random `JWT_SECRET` in `backend/.env` before using real accounts. The API uses a development-only fallback when `NODE_ENV` is not `production`; production startup fails without a configured secret.
+
+   To enable the AI assistant, add `OPENAI_API_KEY` to `backend/.env` (and optionally set `OPENAI_MODEL`). The assistant sends the user's message, recent chat messages, and a limited summary of detected skills, job matches, and application count to OpenAI; it does not send resume text or contact details. Chat requests return a configuration error when no key is set.
 
 3. Install and start the web app:
 
